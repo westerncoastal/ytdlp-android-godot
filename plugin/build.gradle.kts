@@ -10,7 +10,7 @@ plugins {
 val pluginName = "YtdlpGodotAndroidPlugin"
 
 // TODO: Update value to match your plugin's package name.
-val pluginPackageName = "xyz.westerncoastal.ytdlpgodotandroid"
+val pluginPackageName = "org.godotengine.plugin.android.template"
 
 android {
     namespace = pluginPackageName
