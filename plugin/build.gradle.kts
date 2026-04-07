@@ -42,6 +42,8 @@ android {
 
 dependencies {
     implementation("org.godotengine:godot:4.5.1.stable")
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     // TODO: Additional dependencies should be added to export_plugin.gd as well.
 }
 
