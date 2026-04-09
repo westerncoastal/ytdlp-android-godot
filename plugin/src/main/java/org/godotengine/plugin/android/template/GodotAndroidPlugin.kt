@@ -50,7 +50,7 @@ class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
             try {
                 // Fixed: Added the 3rd parameter 'line' to the callback
                 YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-                    emitSignal("download_progress", progress)
+                    emitSignal("download_progress", progress.toFloat())
                 }
                 
                 val finalPath = "${saveDir.absolutePath}/$fileName.mp3"
