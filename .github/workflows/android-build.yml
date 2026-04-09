@@ -26,11 +26,20 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build with Gradle
+      # 'assemble' builds the .aar file
       run: ./gradlew assemble
+
+    - name: List Build Results (Debug)
+      # This helps you see where the files actually landed in the logs
+      run: find . -name "*.aar" && find . -name "*.gdap"
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: GodotYoutubeDL-Plugin
-        # This grabs the built AAR from the plugin's output folder
-        path: plugin/build/outputs/aar/*.aar
+        # We grab the .aar from the build folder and the .gdap from the demo addons
+        # The '**' ensures we search subdirectories
+        path: |
+          plugin/build/outputs/aar/*.aar
+          plugin/demo/addons/**/*.gdap
+        if-no-files-found: error
