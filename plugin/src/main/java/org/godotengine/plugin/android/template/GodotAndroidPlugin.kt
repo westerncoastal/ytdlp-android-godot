@@ -3,7 +3,7 @@ package org.godotengine.plugin.android.template
 import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
-import com.yausername.ffmpeg.FFmpeg // Fixed import path
+import com.yausername.ffmpeg.FFmpeg
 import org.godotengine.godot.Godot
 import org.godotengine.godot.plugin.GodotPlugin
 import org.godotengine.godot.plugin.SignalInfo
@@ -25,7 +25,6 @@ class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
     @UsedByGodot
     fun initLibrary(): Boolean {
         return try {
-            // Use activity!! to provide the Context needed
             YoutubeDL.getInstance().init(activity!!)
             FFmpeg.getInstance().init(activity!!)
             Log.v(pluginName, "yt-dlp and FFmpeg initialized successfully")
@@ -48,14 +47,27 @@ class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
 
         Thread {
             try {
-                // Fixed: Added the 3rd parameter 'line' to the callback
                 YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-                    emitSignal("download_progress", progress.toFloat())
+
+                    // 🔍 Debug (optional, remove later)
+                    Log.d("YTDLP", "RAW progress = [$progress]")
+
+                    // ✅ Clean + safe conversion
+                    val progressFloat = progress
+                        ?.replace("%", "")
+                        ?.trim()
+                        ?.toFloatOrNull()
+
+                    if (progressFloat != null) {
+                        emitSignal("download_progress", progressFloat)
+                    } else {
+                        Log.w(pluginName, "Skipped invalid progress: $progress")
+                    }
                 }
-                
+
                 val finalPath = "${saveDir.absolutePath}/$fileName.mp3"
                 emitSignal("download_completed", finalPath)
-                
+
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
                 emitSignal("download_error", e.message ?: "Unknown error")
