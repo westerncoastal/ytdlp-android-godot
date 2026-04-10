@@ -28,9 +28,15 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun initLibrary(): Boolean {
+        val act = activity
+        if (act == null) {
+            Log.e(pluginName, "Activity is null, cannot initialize libraries")
+            return false
+        }
+
         return try {
-            YoutubeDL.getInstance().init(activity!!)
-            FFmpeg.getInstance().init(activity!!)
+            YoutubeDL.getInstance().init(act)
+            FFmpeg.getInstance().init(act)
             Log.v(pluginName, "yt-dlp and FFmpeg initialized successfully")
             true
         } catch (e: Exception) {
@@ -57,7 +63,6 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
 
                     Log.d("YTDLP", "RAW progress = [$progress]")
 
-                    // ✅ Robust regex parsing
                     val progressFloat = Regex("""(\d+(\.\d+)?)%""")
                         .find(progress?.toString() ?: "")
                         ?.groupValues?.get(1)
@@ -67,7 +72,6 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
 
                         Log.d("YTDLP", "Parsed progressFloat = $progressFloat")
 
-                        // ✅ Ensure main thread + correct Float type
                         mainHandler.post {
                             emitSignal(
                                 "download_progress",
