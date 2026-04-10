@@ -48,16 +48,15 @@ class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
         Thread {
             try {
                 YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-
-                    // 🔍 Debug (optional, remove later)
+                
                     Log.d("YTDLP", "RAW progress = [$progress]")
-
-                    // ✅ Clean + safe conversion
+                
                     val progressFloat = progress
+                        ?.toString()
                         ?.replace("%", "")
                         ?.trim()
                         ?.toFloatOrNull()
-
+                
                     if (progressFloat != null) {
                         emitSignal("download_progress", progressFloat)
                     } else {
