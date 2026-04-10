@@ -47,22 +47,22 @@ class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
 
         Thread {
             try {
-                YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-                
-                    Log.d("YTDLP", "RAW progress = [$progress]")
-                
-                    val progressFloat = progress
-                        ?.toString()
-                        ?.replace("%", "")
-                        ?.trim()
-                        ?.toFloatOrNull()
-                
-                    if (progressFloat != null) {
-                        emitSignal("download_progress", progressFloat)
-                    } else {
-                        Log.w(pluginName, "Skipped invalid progress: $progress")
+                    YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
+                    
+                        Log.d("YTDLP", "RAW progress = [$progress]")
+                    
+                        val progressFloat = progress
+                            ?.toString()
+                            ?.replace("%", "")
+                            ?.trim()
+                            ?.toFloatOrNull()
+                        
+                        if (progressFloat != null) {
+                            emitSignal("download_progress", progressFloat.toFloat())
+                        } else {
+                            Log.w(pluginName, "Skipped invalid progress: $progress")
+                        }
                     }
-                }
 
                 val finalPath = "${saveDir.absolutePath}/$fileName.mp3"
                 emitSignal("download_completed", finalPath)
