@@ -1,5 +1,7 @@
 package org.godotengine.plugin.android.template
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -10,7 +12,9 @@ import org.godotengine.godot.plugin.SignalInfo
 import org.godotengine.godot.plugin.UsedByGodot
 import java.io.File
 
-class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
+class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun getPluginName() = BuildConfig.GODOT_PLUGIN_NAME
 
@@ -37,6 +41,7 @@ class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
 
     @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
+
         val request = YoutubeDLRequest(url)
         val saveDir = File(destinationDir)
         if (!saveDir.exists()) saveDir.mkdirs()
@@ -47,29 +52,46 @@ class GodotAndroidPlugin(godot: Godot): GodotPlugin(godot) {
 
         Thread {
             try {
-                    YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-                    
-                        Log.d("YTDLP", "RAW progress = [$progress]")
-                    
-                        val progressFloat = progress
-                            ?.toString()
-                            ?.replace("%", "")
-                            ?.trim()
-                            ?.toFloatOrNull()
-                        
-                        if (progressFloat != null) {
-                            emitSignal("download_progress", progressFloat.toFloat())
-                        } else {
-                            Log.w(pluginName, "Skipped invalid progress: $progress")
+
+                YoutubeDL.getInstance().execute(request) { progress, _, _ ->
+
+                    Log.d("YTDLP", "RAW progress = [$progress]")
+
+                    // ✅ Robust regex parsing
+                    val progressFloat = Regex("""(\d+(\.\d+)?)%""")
+                        .find(progress?.toString() ?: "")
+                        ?.groupValues?.get(1)
+                        ?.toFloatOrNull()
+
+                    if (progressFloat != null && progressFloat.isFinite()) {
+
+                        Log.d("YTDLP", "Parsed progressFloat = $progressFloat")
+
+                        // ✅ Ensure main thread + correct Float type
+                        mainHandler.post {
+                            emitSignal(
+                                "download_progress",
+                                java.lang.Float.valueOf(progressFloat)
+                            )
                         }
+
+                    } else {
+                        Log.w(pluginName, "Skipped invalid progress: $progress")
                     }
+                }
 
                 val finalPath = "${saveDir.absolutePath}/$fileName.mp3"
-                emitSignal("download_completed", finalPath)
+
+                mainHandler.post {
+                    emitSignal("download_completed", finalPath)
+                }
 
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
-                emitSignal("download_error", e.message ?: "Unknown error")
+
+                mainHandler.post {
+                    emitSignal("download_error", e.message ?: "Unknown error")
+                }
             }
         }.start()
     }
