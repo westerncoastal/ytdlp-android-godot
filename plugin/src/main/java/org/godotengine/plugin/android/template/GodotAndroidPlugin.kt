@@ -13,6 +13,8 @@ import org.godotengine.godot.plugin.UsedByGodot
 import java.io.File
 
 class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
+
+    @Volatile
     private var isYtDlpUpdated = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -23,36 +25,55 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         return mutableSetOf(
             SignalInfo("download_completed", String::class.java),
             SignalInfo("download_error", String::class.java),
-            SignalInfo("download_progress", Float::class.java)
+            SignalInfo("download_progress", Float::class.java),
+
+            // ✅ NEW signals
+            SignalInfo("stream_info", String::class.java, Int::class.java),
+            SignalInfo("stream_info_error", String::class.java),
+            SignalInfo("stream_url", String::class.java),
+            SignalInfo("stream_url_error", String::class.java)
         )
     }
 
+    // ✅ ONE-TIME UPDATE (thread-safe)
+    @Synchronized
     private fun ensureYtDlpUpdated() {
         if (!isYtDlpUpdated) {
-            YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._NIGHTLY)
+            YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
             isYtDlpUpdated = true
+            Log.d(pluginName, "yt-dlp updated once")
         }
     }
 
     @UsedByGodot
     fun initLibrary(): Boolean {
-        val act = activity
-        if (act == null) {
-            Log.e(pluginName, "Activity is null, cannot initialize libraries")
-            return false
-        }
+        val act = activity ?: return false
 
         return try {
             YoutubeDL.getInstance().init(act)
             FFmpeg.getInstance().init(act)
-            Log.v(pluginName, "yt-dlp and FFmpeg initialized successfully")
+
+            Log.v(pluginName, "yt-dlp + FFmpeg initialized")
+
+            // ✅ OPTIONAL: warm-up update in background
+            Thread {
+                try {
+                    ensureYtDlpUpdated()
+                } catch (e: Exception) {
+                    Log.e(pluginName, "Initial update failed: ${e.message}")
+                }
+            }.start()
+
             true
         } catch (e: Exception) {
-            Log.e(pluginName, "Failed to init: ${e.message}")
+            Log.e(pluginName, "Init failed: ${e.message}")
             false
         }
     }
 
+    // =========================
+    // 🎵 DOWNLOAD AUDIO
+    // =========================
     @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
 
@@ -63,8 +84,8 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         request.addOption("-o", "${saveDir.absolutePath}/$fileName.%(ext)s")
         request.addOption("--extract-audio")
         request.addOption("--audio-format", "mp3")
-        
-        // 🔥 critical fixes
+
+        // 🔥 YouTube fixes
         request.addOption("--extractor-args", "youtube:player_client=android")
         request.addOption("--add-header", "User-Agent: Mozilla/5.0")
         request.addOption("-f", "bestaudio/best")
@@ -72,13 +93,9 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
 
         Thread {
             try {
-                if (!alreadyUpdated) {
-                    YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
-                    alreadyUpdated = true
-                }
-                YoutubeDL.getInstance().execute(request) { progress, _, _ ->
+                ensureYtDlpUpdated()
 
-                    Log.d("YTDLP", "RAW progress = [$progress]")
+                YoutubeDL.getInstance().execute(request) { progress, _, _ ->
 
                     val progressFloat = Regex("""(\d+(\.\d+)?)%""")
                         .find(progress?.toString() ?: "")
@@ -86,18 +103,9 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                         ?.toFloatOrNull()
 
                     if (progressFloat != null && progressFloat.isFinite()) {
-
-                        Log.d("YTDLP", "Parsed progressFloat = $progressFloat")
-
                         mainHandler.post {
-                            emitSignal(
-                                "download_progress",
-                                java.lang.Float.valueOf(progressFloat)
-                            )
+                            emitSignal("download_progress", progressFloat)
                         }
-
-                    } else {
-                        Log.w(pluginName, "Skipped invalid progress: $progress")
                     }
                 }
 
@@ -117,33 +125,33 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         }.start()
     }
 
+    // =========================
+    // 📦 STREAM INFO
+    // =========================
     @UsedByGodot
     fun getStreamInfo(url: String) {
-    
+
         Thread {
             try {
-                // ✅ Ensure updated
-                YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._NIGHTLY)
-    
+                ensureYtDlpUpdated()
+
                 val request = YoutubeDLRequest(url)
-    
-                // 🔥 Required for YouTube
                 request.addOption("--extractor-args", "youtube:player_client=android")
                 request.addOption("--add-header", "User-Agent: Mozilla/5.0")
                 request.addOption("--force-ipv4")
-                
+
                 val info = YoutubeDL.getInstance().getInfo(request)
-    
+
                 val title = info.title ?: "unknown"
-                val duration = info.duration ?: 0
-    
+                val duration = (info.duration ?: 0).toInt()
+
                 mainHandler.post {
-                    emitSignal("stream_info", title, duration.toInt())
+                    emitSignal("stream_info", title, duration)
                 }
-    
+
             } catch (e: Exception) {
                 Log.e(pluginName, "StreamInfo Error: ${e.message}")
-    
+
                 mainHandler.post {
                     emitSignal("stream_info_error", e.message ?: "Unknown error")
                 }
@@ -151,30 +159,31 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         }.start()
     }
 
+    // =========================
+    // 🔗 DIRECT STREAM URL
+    // =========================
     @UsedByGodot
     fun getDirectUrl(url: String) {
-    
+
         Thread {
             try {
-                YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
-    
+                ensureYtDlpUpdated()
+
                 val request = YoutubeDLRequest(url)
-    
-                // 🔥 Critical options
                 request.addOption("-f", "best")
                 request.addOption("--extractor-args", "youtube:player_client=android")
                 request.addOption("--add-header", "User-Agent: Mozilla/5.0")
-    
+
                 val info = YoutubeDL.getInstance().getInfo(request)
                 val directUrl = info.url ?: ""
-    
+
                 mainHandler.post {
                     emitSignal("stream_url", directUrl)
                 }
-    
+
             } catch (e: Exception) {
                 Log.e(pluginName, "DirectURL Error: ${e.message}")
-    
+
                 mainHandler.post {
                     emitSignal("stream_url_error", e.message ?: "Unknown error")
                 }
