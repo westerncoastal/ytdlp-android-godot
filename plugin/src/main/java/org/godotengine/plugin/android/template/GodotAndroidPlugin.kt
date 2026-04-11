@@ -120,7 +120,26 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                     wavPath
                 )
 
-                FFmpeg.getInstance().execute(cmd)
+                // ======================
+                // 2. EXTRACT WAV (FIXED)
+                // ======================
+                val cmd = "-y -i ${videoFile.absolutePath} -vn -acodec pcm_s16le -ar 44100 -ac 2 $wavPath"
+                
+                FFmpeg.getInstance().execute(cmd) { result ->
+                    Log.d(pluginName, "FFmpeg: $result")
+                
+                    val wavFile = File(wavPath)
+                
+                    if (wavFile.exists()) {
+                        mainHandler.post {
+                            emitSignal("audio_ready", wavPath)
+                        }
+                    } else {
+                        mainHandler.post {
+                            emitSignal("download_error", "WAV conversion failed")
+                        }
+                    }
+                }
 
                 val wavFile = File(wavPath)
 
