@@ -64,86 +64,72 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
     // =========================================================
     @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
-
+    
         val saveDir = File(destinationDir)
         if (!saveDir.exists()) saveDir.mkdirs()
-
+    
         val videoPath = "${saveDir.absolutePath}/$fileName.mp4"
         val wavPath = "${saveDir.absolutePath}/$fileName.wav"
-
+    
         Thread {
             try {
                 ensureYtDlpUpdated()
-
-                // ======================
-                // 1. DOWNLOAD MP4
-                // ======================
+    
+                // =========================
+                // 1. DOWNLOAD VIDEO (MP4)
+                // =========================
                 val request = YoutubeDLRequest(url)
                 request.addOption("-o", videoPath)
                 request.addOption("-f", "bv*[height<=1080]+ba/b")
                 request.addOption("--merge-output-format", "mp4")
                 request.addOption("--force-ipv4")
                 request.addOption("--add-header", "User-Agent: Mozilla/5.0")
-
+    
                 YoutubeDL.getInstance().execute(request) { progress, _, _ ->
+    
                     val match = Regex("""(\d+(\.\d+)?)%""")
                         .find(progress?.toString() ?: "")
                         ?.groupValues?.get(1)
                         ?.toFloatOrNull()
-
+    
                     if (match != null) {
                         mainHandler.post {
                             emitSignal("download_progress", match)
                         }
                     }
                 }
-
+    
                 val videoFile = File(videoPath)
                 if (!videoFile.exists()) {
                     throw Exception("MP4 download failed")
                 }
-
+    
                 mainHandler.post {
                     emitSignal("download_completed", videoPath)
                 }
-
-                // ======================
-                // 2. EXTRACT WAV
-                // ======================
-                val cmd = arrayOf(
-                    "-y",
-                    "-i", videoFile.absolutePath,
-                    "-vn",
-                    "-acodec", "pcm_s16le",
-                    "-ar", "44100",
-                    "-ac", "2",
-                    wavPath
-                )
-
-                // ======================
-                // 2. EXTRACT WAV (FIXED)
-                // ======================
-                val cmd = "-y -i ${videoFile.absolutePath} -vn -acodec pcm_s16le -ar 44100 -ac 2 $wavPath"
-                
-                FFmpeg.getInstance().execute(cmd) { result ->
-                    Log.d(pluginName, "FFmpeg: $result")
-                
-                    val wavFile = File(wavPath)
-                
-                    if (wavFile.exists()) {
-                        mainHandler.post {
-                            emitSignal("audio_ready", wavPath)
-                        }
-                    } else {
-                        mainHandler.post {
-                            emitSignal("download_error", "WAV conversion failed")
-                        }
+    
+                // =========================
+                // 2. EXTRACT WAV (FFmpeg)
+                // =========================
+                val cmd = "-y -i \"$videoPath\" -vn -acodec pcm_s16le -ar 44100 -ac 2 \"$wavPath\""
+    
+                FFmpeg.getInstance().execute(cmd)
+    
+                val wavFile = File(wavPath)
+    
+                if (wavFile.exists()) {
+                    mainHandler.post {
+                        emitSignal("audio_ready", wavPath)
+                    }
+                } else {
+                    mainHandler.post {
+                        emitSignal("download_error", "WAV conversion failed")
                     }
                 }
-
+    
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
-
+    
                 mainHandler.post {
                     emitSignal("download_error", e.message ?: "unknown")
                 }
