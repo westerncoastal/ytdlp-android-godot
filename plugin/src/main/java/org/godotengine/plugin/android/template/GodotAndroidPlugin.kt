@@ -49,9 +49,14 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot
     fun initLibrary(): Boolean {
         val act = activity ?: return false
+    
         return try {
             YoutubeDL.getInstance().init(act)
             FFmpeg.getInstance().init(act)
+    
+            // optional debug
+            Log.d(pluginName, "yt-dlp + FFmpeg initialized")
+    
             true
         } catch (e: Exception) {
             Log.e(pluginName, "Init failed: ${e.message}")
