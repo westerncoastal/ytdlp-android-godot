@@ -141,18 +141,6 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                     }
                 }
 
-                val wavFile = File(wavPath)
-
-                if (wavFile.exists()) {
-                    mainHandler.post {
-                        emitSignal("audio_ready", wavPath)
-                    }
-                } else {
-                    mainHandler.post {
-                        emitSignal("download_error", "WAV conversion failed")
-                    }
-                }
-
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
 
