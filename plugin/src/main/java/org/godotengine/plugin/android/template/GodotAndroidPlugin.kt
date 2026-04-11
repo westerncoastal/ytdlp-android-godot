@@ -62,7 +62,6 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
     // =========================================================
     // 🎵 DOWNLOAD VIDEO + EXTRACT WAV (FIXED SAFE VERSION)
     // =========================================================
-    @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
     
         val saveDir = File(destinationDir)
@@ -75,15 +74,19 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
             try {
                 ensureYtDlpUpdated()
     
-                // =========================
-                // 1. VIDEO (MP4)
-                // =========================
-                val videoReq = YoutubeDLRequest(url)
-                videoReq.addOption("-o", videoPath)
-                videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
-                videoReq.addOption("--merge-output-format", "mp4")
+                // =====================================================
+                // 1. DOWNLOAD VIDEO + AUDIO ONCE (SYNC SAFE SOURCE)
+                // =====================================================
+                val request = YoutubeDLRequest(url)
     
-                YoutubeDL.getInstance().execute(videoReq)
+                request.addOption("-f", "bv*[height<=1080]+ba/b")
+                request.addOption("--merge-output-format", "mp4")
+                request.addOption("-o", videoPath)
+    
+                // IMPORTANT: embed ffmpeg explicitly
+                request.addOption("--ffmpeg-location", FFmpeg.getInstance().binDir?.absolutePath ?: "")
+    
+                YoutubeDL.getInstance().execute(request)
     
                 val videoFile = File(videoPath)
                 if (!videoFile.exists()) {
@@ -94,14 +97,14 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                     emitSignal("download_completed", videoPath)
                 }
     
-                // =========================
-                // 2. AUDIO (WAV direct from yt-dlp)
-                // =========================
-                val audioReq = YoutubeDLRequest(url)
-                audioReq.addOption("-o", audioPath)
-                audioReq.addOption("-x") // extract audio
+                // =====================================================
+                // 2. EXTRACT WAV FROM LOCAL FILE (NO REDOWNLOAD)
+                // =====================================================
+                val audioReq = YoutubeDLRequest(videoPath)
+    
+                audioReq.addOption("-x")
                 audioReq.addOption("--audio-format", "wav")
-                audioReq.addOption("--audio-quality", "0")
+                audioReq.addOption("-o", audioPath)
     
                 YoutubeDL.getInstance().execute(audioReq)
     
