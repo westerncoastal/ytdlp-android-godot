@@ -111,13 +111,7 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                 emitSignal("audio_ready", audioFile.absolutePath)
             }
         }
-    
-                if (audioFile.exists()) {
-                    mainHandler.post {
-                        emitSignal("audio_ready", audioFile.absolutePath)
-                    }
-                }
-    
+        
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
                 mainHandler.post {
