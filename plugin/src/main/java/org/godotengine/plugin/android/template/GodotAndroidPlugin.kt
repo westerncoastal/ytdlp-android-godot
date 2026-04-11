@@ -81,32 +81,36 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                 // =========================
                 // VIDEO (MP4)
                 // =========================
-                val videoReq = YoutubeDLRequest(url)
-                videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
-                videoReq.addOption("--merge-output-format", "mp4")
-                videoReq.addOption("-o", "$basePath.%(ext)s")
-    
-                YoutubeDL.getInstance().execute(videoReq)
-    
-                val videoFile = File("$basePath.mp4")
-    
-                if (videoFile.exists()) {
-                    mainHandler.post {
-                        emitSignal("download_completed", videoFile.absolutePath)
-                    }
-                }
-    
-                // =========================
-                // AUDIO (WAV)
-                // =========================
-                val audioReq = YoutubeDLRequest(url)
-                audioReq.addOption("-x")
-                audioReq.addOption("--audio-format", "wav")
-                audioReq.addOption("-o", "$basePath.%(ext)s")
-    
-                YoutubeDL.getInstance().execute(audioReq)
-    
-                val audioFile = File("$basePath.wav")
+        // VIDEO
+        val videoReq = YoutubeDLRequest(url)
+        videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
+        videoReq.addOption("--merge-output-format", "mp4")
+        videoReq.addOption("-o", "$basePath.%(ext)s")
+        
+        YoutubeDL.getInstance().execute(videoReq)
+        
+        val videoFile = File("$basePath.mp4")
+        if (!videoFile.exists()) throw Exception("MP4 download failed")
+        
+        mainHandler.post {
+            emitSignal("download_completed", videoFile.absolutePath)
+        }
+        
+        // AUDIO (FROM SAME SOURCE — still redownloads)
+        val audioReq = YoutubeDLRequest(url)
+        audioReq.addOption("-f", "bestaudio")
+        audioReq.addOption("-x")
+        audioReq.addOption("--audio-format", "wav")
+        audioReq.addOption("-o", "$basePath.%(ext)s")
+        
+        YoutubeDL.getInstance().execute(audioReq)
+        
+        val audioFile = File("$basePath.wav")
+        if (audioFile.exists() && audioFile.length() > 0) {
+            mainHandler.post {
+                emitSignal("audio_ready", audioFile.absolutePath)
+            }
+        }
     
                 if (audioFile.exists()) {
                     mainHandler.post {
