@@ -72,59 +72,50 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         val saveDir = File(destinationDir)
         if (!saveDir.exists()) saveDir.mkdirs()
     
-        val videoPath = "${saveDir.absolutePath}/$fileName.mp4"
-        val audioPath = "${saveDir.absolutePath}/$fileName.wav"
+        val basePath = "${saveDir.absolutePath}/$fileName"
     
         Thread {
             try {
                 ensureYtDlpUpdated()
     
-                // =====================================================
-                // 1. DOWNLOAD VIDEO + AUDIO ONCE (SYNC SAFE SOURCE)
-                // =====================================================
                 val req = YoutubeDLRequest(url)
-                
+    
+                // =========================
+                // VIDEO (MP4)
+                // =========================
                 req.addOption("-f", "bv*[height<=1080]+ba/b")
                 req.addOption("--merge-output-format", "mp4")
-                
-                // THIS is the key:
-                req.addOption("-x")
+    
+                // IMPORTANT: correct output pattern (both files)
+                req.addOption("-o", "$basePath.%(ext)s")
+    
+                // =========================
+                // AUDIO EXTRACTION (WAV)
+                // =========================
+                req.addOption("--extract-audio")
                 req.addOption("--audio-format", "wav")
                 req.addOption("--audio-quality", "0")
-                
-                req.addOption("-o", "${saveDir.absolutePath}/$fileName.%(ext)s")
-                
+    
                 YoutubeDL.getInstance().execute(req)
     
-                val videoFile = File(videoPath)
-                if (!videoFile.exists()) {
-                    throw Exception("MP4 download failed")
-                }
+                val videoFile = File("$basePath.mp4")
+                val audioFile = File("$basePath.wav")
     
-                mainHandler.post {
-                    emitSignal("download_completed", videoPath)
-                }
-    
-                // =====================================================
-                // 2. EXTRACT WAV FROM LOCAL FILE (NO REDOWNLOAD)
-                // =====================================================
-                val audioReq = YoutubeDLRequest(videoPath)
-    
-                audioReq.addOption("-x")
-                audioReq.addOption("--audio-format", "wav")
-                audioReq.addOption("-o", audioPath)
-    
-                YoutubeDL.getInstance().execute(audioReq)
-    
-                val wavFile = File(audioPath)
-    
-                if (wavFile.exists()) {
+                if (videoFile.exists()) {
                     mainHandler.post {
-                        emitSignal("audio_ready", audioPath)
+                        emitSignal("download_completed", videoFile.absolutePath)
+                    }
+                } else {
+                    throw Exception("MP4 missing")
+                }
+    
+                if (audioFile.exists()) {
+                    mainHandler.post {
+                        emitSignal("audio_ready", audioFile.absolutePath)
                     }
                 } else {
                     mainHandler.post {
-                        emitSignal("download_error", "WAV extraction failed")
+                        emitSignal("download_error", "WAV missing")
                     }
                 }
     
