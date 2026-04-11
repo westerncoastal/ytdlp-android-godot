@@ -23,47 +23,35 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
 
     override fun getPluginSignals(): MutableSet<SignalInfo> {
         return mutableSetOf(
-            SignalInfo("download_completed", String::class.java),
-            SignalInfo("download_error", String::class.java),
             SignalInfo("download_progress", Float::class.java),
+            SignalInfo("download_completed", String::class.java),
 
-            // ✅ NEW signals
+            SignalInfo("audio_ready", String::class.java),
+            SignalInfo("download_error", String::class.java),
+
             SignalInfo("stream_info", String::class.java, Int::class.java),
             SignalInfo("stream_info_error", String::class.java),
+
             SignalInfo("stream_url", String::class.java),
             SignalInfo("stream_url_error", String::class.java)
         )
     }
 
-    // ✅ ONE-TIME UPDATE (thread-safe)
     @Synchronized
     private fun ensureYtDlpUpdated() {
         if (!isYtDlpUpdated) {
-            YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
+            YoutubeDL.getInstance()
+                .updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
             isYtDlpUpdated = true
-            Log.d(pluginName, "yt-dlp updated once")
         }
     }
 
     @UsedByGodot
     fun initLibrary(): Boolean {
         val act = activity ?: return false
-
         return try {
             YoutubeDL.getInstance().init(act)
             FFmpeg.getInstance().init(act)
-
-            Log.v(pluginName, "yt-dlp + FFmpeg initialized")
-
-            // ✅ OPTIONAL: warm-up update in background
-            Thread {
-                try {
-                    ensureYtDlpUpdated()
-                } catch (e: Exception) {
-                    Log.e(pluginName, "Initial update failed: ${e.message}")
-                }
-            }.start()
-
             true
         } catch (e: Exception) {
             Log.e(pluginName, "Init failed: ${e.message}")
@@ -71,156 +59,140 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         }
     }
 
-    // =========================
-    // 🎵 DOWNLOAD AUDIO
-    // =========================
+    // =========================================================
+    // 🎵 DOWNLOAD VIDEO + EXTRACT WAV (FIXED SAFE VERSION)
+    // =========================================================
     @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
-    
+
         val saveDir = File(destinationDir)
         if (!saveDir.exists()) saveDir.mkdirs()
-    
+
         val videoPath = "${saveDir.absolutePath}/$fileName.mp4"
         val wavPath = "${saveDir.absolutePath}/$fileName.wav"
-    
-        val request = YoutubeDLRequest(url)
-    
-        // =========================
-        // 🎥 VIDEO DOWNLOAD (MP4)
-        // =========================
-        request.addOption("-o", videoPath)
-        request.addOption("-f", "bv*[vcodec^=avc1][height<=1080]+ba/b[height<=1080]")
-        request.addOption("--merge-output-format", "mp4")
-    
-        // Stability
-        request.addOption("--extractor-args", "youtube:player_client=android")
-        request.addOption("--add-header", "User-Agent: Mozilla/5.0")
-        request.addOption("--force-ipv4")
-    
+
         Thread {
             try {
                 ensureYtDlpUpdated()
-    
+
+                // ======================
+                // 1. DOWNLOAD MP4
+                // ======================
+                val request = YoutubeDLRequest(url)
+                request.addOption("-o", videoPath)
+                request.addOption("-f", "bv*[height<=1080]+ba/b")
+                request.addOption("--merge-output-format", "mp4")
+                request.addOption("--force-ipv4")
+                request.addOption("--add-header", "User-Agent: Mozilla/5.0")
+
                 YoutubeDL.getInstance().execute(request) { progress, _, _ ->
-    
-                    val progressFloat = Regex("""(\d+(\.\d+)?)%""")
+                    val match = Regex("""(\d+(\.\d+)?)%""")
                         .find(progress?.toString() ?: "")
                         ?.groupValues?.get(1)
                         ?.toFloatOrNull()
-    
-                    if (progressFloat != null && progressFloat.isFinite()) {
+
+                    if (match != null) {
                         mainHandler.post {
-                            emitSignal("download_progress", progressFloat)
+                            emitSignal("download_progress", match)
                         }
                     }
                 }
-    
+
                 val videoFile = File(videoPath)
-    
                 if (!videoFile.exists()) {
-                    throw Exception("Video download failed (MP4 missing)")
+                    throw Exception("MP4 download failed")
                 }
-    
-                // =========================
-                // 🎧 WAV CONVERSION (FFmpeg)
-                // =========================
+
+                mainHandler.post {
+                    emitSignal("download_completed", videoPath)
+                }
+
+                // ======================
+                // 2. EXTRACT WAV
+                // ======================
                 val cmd = arrayOf(
+                    "-y",
                     "-i", videoFile.absolutePath,
+                    "-vn",
+                    "-acodec", "pcm_s16le",
                     "-ar", "44100",
                     "-ac", "2",
-                    "-y",
                     wavPath
                 )
-    
-                FFmpeg.getInstance().execute(cmd) { result ->
-    
-                    val wavFile = File(wavPath)
-    
-                    if (!wavFile.exists()) {
-                        mainHandler.post {
-                            emitSignal("download_error", "WAV conversion failed")
-                        }
-                        return@execute
-                    }
-    
+
+                FFmpeg.getInstance().execute(cmd)
+
+                val wavFile = File(wavPath)
+
+                if (wavFile.exists()) {
                     mainHandler.post {
-                        // 🎯 SEND BOTH OUTPUTS TO GODOT
-                        emitSignal("download_completed", videoFile.absolutePath)
-                        emitSignal("audio_ready", wavFile.absolutePath)
+                        emitSignal("audio_ready", wavPath)
+                    }
+                } else {
+                    mainHandler.post {
+                        emitSignal("download_error", "WAV conversion failed")
                     }
                 }
-    
+
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
-    
+
                 mainHandler.post {
-                    emitSignal("download_error", e.message ?: "Unknown error")
+                    emitSignal("download_error", e.message ?: "unknown")
                 }
             }
         }.start()
     }
 
-    // =========================
+    // =========================================================
     // 📦 STREAM INFO
-    // =========================
+    // =========================================================
     @UsedByGodot
     fun getStreamInfo(url: String) {
-
         Thread {
             try {
                 ensureYtDlpUpdated()
 
                 val request = YoutubeDLRequest(url)
-                request.addOption("--extractor-args", "youtube:player_client=android")
-                request.addOption("--add-header", "User-Agent: Mozilla/5.0")
-                request.addOption("--force-ipv4")
-
                 val info = YoutubeDL.getInstance().getInfo(request)
 
-                val title = info.title ?: "unknown"
-                val duration = (info.duration ?: 0).toInt()
-
                 mainHandler.post {
-                    emitSignal("stream_info", title, duration)
+                    emitSignal(
+                        "stream_info",
+                        info.title ?: "unknown",
+                        (info.duration ?: 0).toInt()
+                    )
                 }
 
             } catch (e: Exception) {
-                Log.e(pluginName, "StreamInfo Error: ${e.message}")
-
                 mainHandler.post {
-                    emitSignal("stream_info_error", e.message ?: "Unknown error")
+                    emitSignal("stream_info_error", e.message ?: "error")
                 }
             }
         }.start()
     }
 
-    // =========================
+    // =========================================================
     // 🔗 DIRECT STREAM URL
-    // =========================
+    // =========================================================
     @UsedByGodot
     fun getDirectUrl(url: String) {
-
         Thread {
             try {
                 ensureYtDlpUpdated()
 
                 val request = YoutubeDLRequest(url)
                 request.addOption("-f", "best")
-                request.addOption("--extractor-args", "youtube:player_client=android")
-                request.addOption("--add-header", "User-Agent: Mozilla/5.0")
 
                 val info = YoutubeDL.getInstance().getInfo(request)
-                val directUrl = info.url ?: ""
 
                 mainHandler.post {
-                    emitSignal("stream_url", directUrl)
+                    emitSignal("stream_url", info.url ?: "")
                 }
 
             } catch (e: Exception) {
-                Log.e(pluginName, "DirectURL Error: ${e.message}")
-
                 mainHandler.post {
-                    emitSignal("stream_url_error", e.message ?: "Unknown error")
+                    emitSignal("stream_url_error", e.message ?: "error")
                 }
             }
         }.start()
