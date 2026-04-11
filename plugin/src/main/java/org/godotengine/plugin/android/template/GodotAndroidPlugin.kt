@@ -69,35 +69,21 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         if (!saveDir.exists()) saveDir.mkdirs()
     
         val videoPath = "${saveDir.absolutePath}/$fileName.mp4"
-        val wavPath = "${saveDir.absolutePath}/$fileName.wav"
+        val audioPath = "${saveDir.absolutePath}/$fileName.wav"
     
         Thread {
             try {
                 ensureYtDlpUpdated()
     
                 // =========================
-                // 1. DOWNLOAD VIDEO (MP4)
+                // 1. VIDEO (MP4)
                 // =========================
-                val request = YoutubeDLRequest(url)
-                request.addOption("-o", videoPath)
-                request.addOption("-f", "bv*[height<=1080]+ba/b")
-                request.addOption("--merge-output-format", "mp4")
-                request.addOption("--force-ipv4")
-                request.addOption("--add-header", "User-Agent: Mozilla/5.0")
+                val videoReq = YoutubeDLRequest(url)
+                videoReq.addOption("-o", videoPath)
+                videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
+                videoReq.addOption("--merge-output-format", "mp4")
     
-                YoutubeDL.getInstance().execute(request) { progress, _, _ ->
-    
-                    val match = Regex("""(\d+(\.\d+)?)%""")
-                        .find(progress?.toString() ?: "")
-                        ?.groupValues?.get(1)
-                        ?.toFloatOrNull()
-    
-                    if (match != null) {
-                        mainHandler.post {
-                            emitSignal("download_progress", match)
-                        }
-                    }
-                }
+                YoutubeDL.getInstance().execute(videoReq)
     
                 val videoFile = File(videoPath)
                 if (!videoFile.exists()) {
@@ -109,21 +95,25 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                 }
     
                 // =========================
-                // 2. EXTRACT WAV (FFmpeg)
+                // 2. AUDIO (WAV direct from yt-dlp)
                 // =========================
-                val cmd = "-y -i \"$videoPath\" -vn -acodec pcm_s16le -ar 44100 -ac 2 \"$wavPath\""
+                val audioReq = YoutubeDLRequest(url)
+                audioReq.addOption("-o", audioPath)
+                audioReq.addOption("-x") // extract audio
+                audioReq.addOption("--audio-format", "wav")
+                audioReq.addOption("--audio-quality", "0")
     
-                FFmpeg.getInstance().execute(cmd)
+                YoutubeDL.getInstance().execute(audioReq)
     
-                val wavFile = File(wavPath)
+                val wavFile = File(audioPath)
     
                 if (wavFile.exists()) {
                     mainHandler.post {
-                        emitSignal("audio_ready", wavPath)
+                        emitSignal("audio_ready", audioPath)
                     }
                 } else {
                     mainHandler.post {
-                        emitSignal("download_error", "WAV conversion failed")
+                        emitSignal("download_error", "WAV extraction failed")
                     }
                 }
     
