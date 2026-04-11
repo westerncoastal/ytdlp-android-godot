@@ -78,50 +78,44 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
             try {
                 ensureYtDlpUpdated()
     
-                val req = YoutubeDLRequest(url)
-    
                 // =========================
                 // VIDEO (MP4)
                 // =========================
-                req.addOption("-f", "bv*[height<=1080]+ba/b")
-                req.addOption("--merge-output-format", "mp4")
+                val videoReq = YoutubeDLRequest(url)
+                videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
+                videoReq.addOption("--merge-output-format", "mp4")
+                videoReq.addOption("-o", "$basePath.%(ext)s")
     
-                // IMPORTANT: correct output pattern (both files)
-                req.addOption("-o", "$basePath.%(ext)s")
-    
-                // =========================
-                // AUDIO EXTRACTION (WAV)
-                // =========================
-                req.addOption("--extract-audio")
-                req.addOption("--audio-format", "wav")
-                req.addOption("--audio-quality", "0")
-    
-                YoutubeDL.getInstance().execute(req)
+                YoutubeDL.getInstance().execute(videoReq)
     
                 val videoFile = File("$basePath.mp4")
-                val audioFile = File("$basePath.wav")
     
                 if (videoFile.exists()) {
                     mainHandler.post {
                         emitSignal("download_completed", videoFile.absolutePath)
                     }
-                } else {
-                    throw Exception("MP4 missing")
                 }
+    
+                // =========================
+                // AUDIO (WAV)
+                // =========================
+                val audioReq = YoutubeDLRequest(url)
+                audioReq.addOption("-x")
+                audioReq.addOption("--audio-format", "wav")
+                audioReq.addOption("-o", "$basePath.%(ext)s")
+    
+                YoutubeDL.getInstance().execute(audioReq)
+    
+                val audioFile = File("$basePath.wav")
     
                 if (audioFile.exists()) {
                     mainHandler.post {
                         emitSignal("audio_ready", audioFile.absolutePath)
                     }
-                } else {
-                    mainHandler.post {
-                        emitSignal("download_error", "WAV missing")
-                    }
                 }
     
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
-    
                 mainHandler.post {
                     emitSignal("download_error", e.message ?: "unknown")
                 }
