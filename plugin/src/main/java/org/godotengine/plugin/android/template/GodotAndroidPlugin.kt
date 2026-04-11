@@ -88,9 +88,6 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                 request.addOption("--merge-output-format", "mp4")
                 request.addOption("-o", videoPath)
     
-                // IMPORTANT: embed ffmpeg explicitly
-                request.addOption("--ffmpeg-location", FFmpeg.getInstance().binDir?.absolutePath ?: "")
-    
                 YoutubeDL.getInstance().execute(request)
     
                 val videoFile = File(videoPath)
