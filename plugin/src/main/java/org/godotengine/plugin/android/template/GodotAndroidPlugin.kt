@@ -74,22 +74,25 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
     // =========================
     // 🎵 DOWNLOAD AUDIO
     // =========================
-
     @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
     
-        val request = YoutubeDLRequest(url)
         val saveDir = File(destinationDir)
         if (!saveDir.exists()) saveDir.mkdirs()
     
-        // Output template
-        request.addOption("-o", "${saveDir.absolutePath}/$fileName.%(ext)s")
+        val videoPath = "${saveDir.absolutePath}/$fileName.mp4"
+        val wavPath = "${saveDir.absolutePath}/$fileName.wav"
     
-        // ✅ BEST PRACTICAL QUALITY (H.264, <=1080p)
+        val request = YoutubeDLRequest(url)
+    
+        // =========================
+        // 🎥 VIDEO DOWNLOAD (MP4)
+        // =========================
+        request.addOption("-o", videoPath)
         request.addOption("-f", "bv*[vcodec^=avc1][height<=1080]+ba/b[height<=1080]")
         request.addOption("--merge-output-format", "mp4")
     
-        // Stability fixes
+        // Stability
         request.addOption("--extractor-args", "youtube:player_client=android")
         request.addOption("--add-header", "User-Agent: Mozilla/5.0")
         request.addOption("--force-ipv4")
@@ -112,18 +115,39 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                     }
                 }
     
-                // Find merged file
-                val files = saveDir.listFiles()
-                val finalFile = files?.firstOrNull {
-                    it.name.startsWith(fileName) && it.extension == "mp4"
+                val videoFile = File(videoPath)
+    
+                if (!videoFile.exists()) {
+                    throw Exception("Video download failed (MP4 missing)")
                 }
     
-                if (finalFile != null) {
-                    mainHandler.post {
-                        emitSignal("download_completed", finalFile.absolutePath)
+                // =========================
+                // 🎧 WAV CONVERSION (FFmpeg)
+                // =========================
+                val cmd = arrayOf(
+                    "-i", videoFile.absolutePath,
+                    "-ar", "44100",
+                    "-ac", "2",
+                    "-y",
+                    wavPath
+                )
+    
+                FFmpeg.getInstance().execute(cmd) { result ->
+    
+                    val wavFile = File(wavPath)
+    
+                    if (!wavFile.exists()) {
+                        mainHandler.post {
+                            emitSignal("download_error", "WAV conversion failed")
+                        }
+                        return@execute
                     }
-                } else {
-                    throw Exception("Merged MP4 not found")
+    
+                    mainHandler.post {
+                        // 🎯 SEND BOTH OUTPUTS TO GODOT
+                        emitSignal("download_completed", videoFile.absolutePath)
+                        emitSignal("audio_ready", wavFile.absolutePath)
+                    }
                 }
     
             } catch (e: Exception) {
