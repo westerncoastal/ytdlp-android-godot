@@ -74,50 +74,61 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
     // =========================
     // 🎵 DOWNLOAD AUDIO
     // =========================
+
     @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
-
+    
         val request = YoutubeDLRequest(url)
         val saveDir = File(destinationDir)
         if (!saveDir.exists()) saveDir.mkdirs()
-
+    
+        // Output template
         request.addOption("-o", "${saveDir.absolutePath}/$fileName.%(ext)s")
-        request.addOption("--extract-audio")
-        request.addOption("--audio-format", "mp3")
-
-        // 🔥 YouTube fixes
+    
+        // ✅ BEST PRACTICAL QUALITY (H.264, <=1080p)
+        request.addOption("-f", "bv*[vcodec^=avc1][height<=1080]+ba/b[height<=1080]")
+        request.addOption("--merge-output-format", "mp4")
+    
+        // Stability fixes
         request.addOption("--extractor-args", "youtube:player_client=android")
         request.addOption("--add-header", "User-Agent: Mozilla/5.0")
-        request.addOption("-f", "bestaudio/best")
         request.addOption("--force-ipv4")
-
+    
         Thread {
             try {
                 ensureYtDlpUpdated()
-
+    
                 YoutubeDL.getInstance().execute(request) { progress, _, _ ->
-
+    
                     val progressFloat = Regex("""(\d+(\.\d+)?)%""")
                         .find(progress?.toString() ?: "")
                         ?.groupValues?.get(1)
                         ?.toFloatOrNull()
-
+    
                     if (progressFloat != null && progressFloat.isFinite()) {
                         mainHandler.post {
                             emitSignal("download_progress", progressFloat)
                         }
                     }
                 }
-
-                val finalPath = "${saveDir.absolutePath}/$fileName.mp3"
-
-                mainHandler.post {
-                    emitSignal("download_completed", finalPath)
+    
+                // Find merged file
+                val files = saveDir.listFiles()
+                val finalFile = files?.firstOrNull {
+                    it.name.startsWith(fileName) && it.extension == "mp4"
                 }
-
+    
+                if (finalFile != null) {
+                    mainHandler.post {
+                        emitSignal("download_completed", finalFile.absolutePath)
+                    }
+                } else {
+                    throw Exception("Merged MP4 not found")
+                }
+    
             } catch (e: Exception) {
                 Log.e(pluginName, "Download Error: ${e.message}")
-
+    
                 mainHandler.post {
                     emitSignal("download_error", e.message ?: "Unknown error")
                 }
