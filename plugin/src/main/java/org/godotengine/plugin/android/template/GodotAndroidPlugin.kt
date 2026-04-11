@@ -82,13 +82,19 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
                 // =====================================================
                 // 1. DOWNLOAD VIDEO + AUDIO ONCE (SYNC SAFE SOURCE)
                 // =====================================================
-                val request = YoutubeDLRequest(url)
-    
-                request.addOption("-f", "bv*[height<=1080]+ba/b")
-                request.addOption("--merge-output-format", "mp4")
-                request.addOption("-o", videoPath)
-    
-                YoutubeDL.getInstance().execute(request)
+                val req = YoutubeDLRequest(url)
+                
+                req.addOption("-f", "bv*[height<=1080]+ba/b")
+                req.addOption("--merge-output-format", "mp4")
+                
+                // THIS is the key:
+                req.addOption("-x")
+                req.addOption("--audio-format", "wav")
+                req.addOption("--audio-quality", "0")
+                
+                req.addOption("-o", "${saveDir.absolutePath}/$fileName.%(ext)s")
+                
+                YoutubeDL.getInstance().execute(req)
     
                 val videoFile = File(videoPath)
                 if (!videoFile.exists()) {
