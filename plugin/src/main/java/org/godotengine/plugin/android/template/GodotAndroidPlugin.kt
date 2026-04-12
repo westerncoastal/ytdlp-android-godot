@@ -67,6 +67,7 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
     // =========================================================
     // 🎵 DOWNLOAD VIDEO + EXTRACT WAV (FIXED SAFE VERSION)
     // =========================================================
+    @UsedByGodot
     fun startDownload(url: String, fileName: String, destinationDir: String) {
     
         val saveDir = File(destinationDir)
