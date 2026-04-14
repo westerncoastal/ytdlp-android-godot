@@ -64,63 +64,70 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
         }
     }
 
-    // =========================================================
-    // 🎵 DOWNLOAD VIDEO + EXTRACT WAV (FIXED SAFE VERSION)
-    // =========================================================
-    @UsedByGodot
-    fun startDownload(url: String, fileName: String, destinationDir: String) {
-    
-        val saveDir = File(destinationDir)
-        if (!saveDir.exists()) saveDir.mkdirs()
-    
-        val basePath = "${saveDir.absolutePath}/$fileName"
-    
-        Thread {
-            try {
-                ensureYtDlpUpdated()
-    
-                // =========================
-                // VIDEO (MP4)
-                // =========================
-        // VIDEO
-        val videoReq = YoutubeDLRequest(url)
-        videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
-        videoReq.addOption("--merge-output-format", "mp4")
-        videoReq.addOption("-o", "$basePath.%(ext)s")
-        
-        YoutubeDL.getInstance().execute(videoReq)
-        
-        val videoFile = File("$basePath.mp4")
-        if (!videoFile.exists()) throw Exception("MP4 download failed")
-        
-        mainHandler.post {
-            emitSignal("download_completed", videoFile.absolutePath)
-        }
-        
-        // AUDIO (FROM SAME SOURCE — still redownloads)
-        val audioReq = YoutubeDLRequest(url)
-        audioReq.addOption("-f", "bestaudio")
-        audioReq.addOption("-x")
-        audioReq.addOption("--audio-format", "wav")
-        audioReq.addOption("-o", "$basePath.%(ext)s")
-        
-        YoutubeDL.getInstance().execute(audioReq)
-        
-        val audioFile = File("$basePath.wav")
-        if (audioFile.exists() && audioFile.length() > 0) {
+// =========================================================
+// 🎵 DOWNLOAD VIDEO + AUDIO (FIXED SAFE VERSION)
+// =========================================================
+@UsedByGodot
+fun startDownload(url: String, fileName: String, destinationDir: String) {
+
+    val saveDir = File(destinationDir)
+    if (!saveDir.exists()) saveDir.mkdirs()
+
+    val basePath = "${saveDir.absolutePath}/$fileName"
+
+    Thread {
+        try {
+            ensureYtDlpUpdated()
+
+            // =========================
+            // VIDEO (MP4) — UNCHANGED
+            // =========================
+            val videoReq = YoutubeDLRequest(url)
+            videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
+            videoReq.addOption("--merge-output-format", "mp4")
+            videoReq.addOption("-o", "$basePath.%(ext)s")
+
+            YoutubeDL.getInstance().execute(videoReq)
+
+            val videoFile = File("$basePath.mp4")
+            if (!videoFile.exists()) throw Exception("MP4 download failed")
+
             mainHandler.post {
-                emitSignal("audio_ready", audioFile.absolutePath)
+                emitSignal("download_completed", videoFile.absolutePath)
             }
-        }
-        
-            } catch (e: Exception) {
-                Log.e(pluginName, "Download Error: ${e.message}")
+
+            // =========================
+            // AUDIO (FIXED — NO WAV, NO SCAN)
+            // =========================
+            val audioReq = YoutubeDLRequest(url)
+            audioReq.addOption("-f", "bestaudio")
+            audioReq.addOption("-o", "$basePath.%(ext)s")
+
+            val audioResp = YoutubeDL.getInstance().execute(audioReq)
+
+            // FIXED: safe extraction of real file path
+            val audioPath = audioResp.out
+                .lines()
+                .map { it.trim() }
+                .lastOrNull { it.isNotBlank() && it.contains("/") }
+                ?: throw Exception("No audio path returned")
+
+            val audioFile = File(audioPath)
+
+            if (audioFile.exists() && audioFile.length() > 0) {
                 mainHandler.post {
-                    emitSignal("download_error", e.message ?: "unknown")
+                    emitSignal("audio_ready", audioFile.absolutePath)
                 }
             }
-        }.start()
-    }
+
+        } catch (e: Exception) {
+            Log.e(pluginName, "Download Error: ${e.message}")
+            mainHandler.post {
+                emitSignal("download_error", e.message ?: "unknown")
+            }
+        }
+    }.start()
+}
 
     // =========================================================
     // 📦 STREAM INFO
