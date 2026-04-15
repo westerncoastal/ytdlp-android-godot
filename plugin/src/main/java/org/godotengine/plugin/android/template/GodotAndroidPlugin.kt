@@ -84,7 +84,7 @@ fun startDownload(url: String, fileName: String, destinationDir: String) {
             // VIDEO (MP4) — UNCHANGED
             // =========================
             val videoReq = YoutubeDLRequest(url)
-            videoReq.addOption("-f", "bv*[height<=1080]+ba/b")
+            videoReq.addOption("-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best")
             videoReq.addOption("--merge-output-format", "mp4")
             videoReq.addOption("-o", "$basePath.%(ext)s")
 
