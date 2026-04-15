@@ -41,7 +41,8 @@ class GodotAndroidPlugin(godot: Godot) : GodotPlugin(godot) {
     private fun ensureYtDlpUpdated() {
         if (!isYtDlpUpdated) {
             YoutubeDL.getInstance()
-                .updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
+                .updateYoutubeDL(context, YoutubeDL.UpdateChannel._LATEST
+                                )
             isYtDlpUpdated = true
         }
     }
